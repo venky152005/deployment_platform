@@ -8,7 +8,9 @@ import router from "./routes/route";
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-const docker = new Docker({ host: "localhost", port: 2375 }); 
+const docker = new Docker({ host: "localhost", port: 2375 
+    // socketPath: "/var/run/docker.sock"
+}); 
 const PORT = process.env.PORT || 8000;
 
 app.use(cors());
@@ -52,8 +54,7 @@ socket.onAny((event, ...args) => {
       stdout: true,         
       stderr: true,       
     });
-  
-//    res.send(logstream.toString());
+    
   logstream.on("data", (chunk: Buffer) => {
   const log = chunk.toString();
   console.log("Docker Log:", log);

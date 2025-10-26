@@ -1,15 +1,19 @@
 import Docker from "dockerode";
 import { Request, Response } from "express";
 import notifier from "node-notifier";
+import { sendEmail } from "./email";
 import tar from "tar-fs";
 import fs from "fs";
 
-const docker = new Docker({ host: "localhost", port: 2375 }); 
+const docker = new Docker({ host: "localhost", port: 2375 
+    // socketPath: "/var/run/docker.sock"
+}); 
 
 export const createContainer = async (req: Request, res: Response) => {
 
     const { projectPath, projectName } = req.body;
 
+    const startTime = new Date();
     console.log("Received request to create Docker container with data:", req.body);
     console.log("Time:", new Date().toLocaleString());
 
@@ -91,13 +95,17 @@ export const createContainer = async (req: Request, res: Response) => {
 
     await container.start();
 
+    const endTime = new Date();
+    const totalTime = (endTime.getTime() - startTime.getTime()) / 1000;
+
     notifier.notify({
          title:'Request completed successfully',
          sound:true,
          message:"Super daa mapla"
         });
 
-    res.status(200).json({ message: `Docker container ${projectName} created and started` });
+    await sendEmail("venky15.12.2005@gmail.com", `Docker container ${projectName} created`, `The Docker container for ${projectName} has been successfully created. finished in ${totalTime} seconds.`);
+    res.status(200).json({ message: `Docker container ${projectName} created and started in ${totalTime} seconds` });
 
     } catch (error) {
          notifier.notify({
