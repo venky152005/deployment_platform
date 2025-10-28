@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import Docker from "dockerode";
+import mongoose from "mongoose";
 import { Server } from "socket.io";
 import router from "./routes/route";
 
@@ -11,10 +12,17 @@ const io = new Server(server);
 const docker = new Docker({ host: "localhost", port: 2375 
     // socketPath: "/var/run/docker.sock"
 }); 
+const MongoURI = process.env.MONGO_URI!;
 const PORT = process.env.PORT || 8000;
 
 app.use(cors());
 app.use(express.json());
+
+mongoose.connect(MongoURI).then(() => {
+    console.log("Connected to MongoDB");
+}).catch((err) => {
+    console.error("Error connecting to MongoDB:", err);
+}); 
 
 app.get("/", (req, res) => {
      res.json({message:"Vanakkam Daa Mapla"});

@@ -2,12 +2,24 @@ import Docker from "dockerode";
 import { Request, Response } from "express";
 import notifier from "node-notifier";
 import { sendEmail } from "./email";
+import getPort from "get-port";
+import {v4 as uuid} from "uuid";
 import tar from "tar-fs";
 import fs from "fs";
+import { createNginxConfig, enableNginxConfig } from "../utils/nginx";
+import ContainerModel from "../model/container.model";
 
 const docker = new Docker({ host: "localhost", port: 2375 
     // socketPath: "/var/run/docker.sock"
 }); 
+
+function slugify(name: string){
+    return name.toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-]/g, "")
+    .replace(/\-+/g, "-")
+    .slice(0, 40);
+} 
 
 export const createContainer = async (req: Request, res: Response) => {
 
@@ -82,6 +94,8 @@ export const createContainer = async (req: Request, res: Response) => {
             });
     });
 
+    const hostport = await getPort({port: (getPort as any).makeRange(4000, 5000)});
+
     const containername = `${imageName}-${Date.now()}`
 
     const container = await docker.createContainer({
@@ -89,7 +103,8 @@ export const createContainer = async (req: Request, res: Response) => {
         name: containername,
         ExposedPorts: { "3000/tcp": {} },
         HostConfig: {
-            PortBindings: { "3000/tcp": [{ HostPort: "3000" }] }
+            PortBindings: { "3000/tcp": [{ HostPort: String(hostport) }] },
+            AutoRemove: false
         }
     });
 
@@ -98,6 +113,26 @@ export const createContainer = async (req: Request, res: Response) => {
     const endTime = new Date();
     const totalTime = (endTime.getTime() - startTime.getTime()) / 1000;
 
+    const shortId = uuid().slice(0,6);
+    const subdomain = slugify(projectName);
+    const finalsubdomain = `${subdomain}-${shortId}`;
+
+    const config = await createNginxConfig(finalsubdomain,hostport);
+    await enableNginxConfig(finalsubdomain, config);
+
+    const doc = await ContainerModel.create({
+        containerId: container.id,
+        containername: containername,
+        subdomain: finalsubdomain,
+        port: hostport,
+        image: imgname,
+        status: "running",
+        lastActive: new Date(),
+    })
+
+    const elapsed = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
+    const publicUrl = `https://${finalsubdomain}.jitalumni.site`;
+
     notifier.notify({
          title:'Request completed successfully',
          sound:true,
@@ -105,7 +140,7 @@ export const createContainer = async (req: Request, res: Response) => {
         });
 
     await sendEmail("venky15.12.2005@gmail.com", `Docker container ${projectName} created`, `The Docker container for ${projectName} has been successfully created. finished in ${totalTime} seconds.`);
-    res.status(200).json({ message: `Docker container ${projectName} created and started in ${totalTime} seconds` });
+    res.status(200).json({ message: `Docker container ${projectName} created and started in ${totalTime} seconds`,url: publicUrl, hostport, containerId: container.id || containername, deployment: doc, elapsed, });
 
     } catch (error) {
          notifier.notify({
