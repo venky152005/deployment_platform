@@ -5,6 +5,8 @@ import Docker from "dockerode";
 import mongoose from "mongoose";
 import { Server } from "socket.io";
 import router from "./routes/route";
+import { subdomainMiddleware } from "./middleware/subdomain";
+import ContainerModel from "./model/container.model";
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +29,8 @@ mongoose.connect(MongoURI).then(() => {
 app.get("/", (req, res) => {
      res.json({message:"Vanakkam Daa Mapla"});
 });
+
+app.use(subdomainMiddleware);
 
 app.use("/api", router);
 
@@ -89,3 +93,27 @@ logstream.resume();
 )
 }
 )
+
+setInterval(async () => {
+  const date = new Date();
+
+  try {
+    const containers = await ContainerModel.find({ status: "running" });
+
+    for (const container of containers) {
+      if (container.lastActive) {
+        const diff = date.getTime() - container.lastActive.getTime();
+        const diffInMinutes = Math.floor(diff / 1000 / 60);
+        if (diffInMinutes >= 10) {
+          const dockerContainer = docker.getContainer(container.containerId);
+          await dockerContainer.stop();
+          container.status = "stopped";
+          await container.save();
+          console.log(`Stopped container ${container.containerId} due to inactivity.`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error:", error);
+  }
+})

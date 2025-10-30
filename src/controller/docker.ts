@@ -1,11 +1,12 @@
 import Docker from "dockerode";
 import { Request, Response } from "express";
-import notifier from "node-notifier";
+// import notifier from "node-notifier";
 import { sendEmail } from "./email";
 import getPort from "get-port";
 import {v4 as uuid} from "uuid";
 import tar from "tar-fs";
 import fs from "fs";
+import path from "path";
 import { createNginxConfig, enableNginxConfig } from "../utils/nginx";
 import ContainerModel from "../model/container.model";
 
@@ -94,22 +95,41 @@ export const createContainer = async (req: Request, res: Response) => {
             });
     });
 
-    const hostport = await getPort({port: (getPort as any).makeRange(4000, 5000)});
+    const hostport = await getPort({
+     port: Array.from({ length: 1000 }, (_, i) => 4000 + i)
+    });
+
 
     const containername = `${imageName}-${Date.now()}`
 
-    const container = await docker.createContainer({
+    let container
+
+    let containerport = "3000";
+
+    if (fs.existsSync(path.join(projectPath, "vite.config.js")) || fs.existsSync(path.join(projectPath, "vite.config.ts"))) {
+      containerport = "80";
+    }
+
+   try{
+     container = await docker.createContainer({
         Image: imgname,
         name: containername,
-        ExposedPorts: { "3000/tcp": {} },
+        ExposedPorts: { [`${containerport}/tcp`]: {} },
         HostConfig: {
-            PortBindings: { "3000/tcp": [{ HostPort: String(hostport) }] },
-            AutoRemove: false
+            PortBindings: { [`${containerport}/tcp`]: [{ HostPort: String(hostport) }] },
+            AutoRemove: false,
+            NetworkMode: "bridge"
         }
     });
+   }catch(err){
+     console.error("Container create error =>", err);
+     throw err;
+   }
 
-    await container.start();
-
+    await container.start().catch(err => {
+  console.error("Container start error =>", err);
+  throw err;
+});
     const endTime = new Date();
     const totalTime = (endTime.getTime() - startTime.getTime()) / 1000;
 
@@ -133,21 +153,21 @@ export const createContainer = async (req: Request, res: Response) => {
     const elapsed = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
     const publicUrl = `https://${finalsubdomain}.jitalumni.site`;
 
-    notifier.notify({
-         title:'Request completed successfully',
-         sound:true,
-         message:"Super daa mapla"
-        });
+    // notifier.notify({
+    //      title:'Request completed successfully',
+    //      sound:true,
+    //      message:"Super daa mapla"
+    //     });
 
-    await sendEmail("venky15.12.2005@gmail.com", `Docker container ${projectName} created`, `The Docker container for ${projectName} has been successfully created. finished in ${totalTime} seconds.`);
     res.status(200).json({ message: `Docker container ${projectName} created and started in ${totalTime} seconds`,url: publicUrl, hostport, containerId: container.id || containername, deployment: doc, elapsed, });
 
     } catch (error) {
-         notifier.notify({
-         title:'Request failed',
-         sound:true,
-         message:"Super daa mapla thiripiyum try pannu"
-        });
+        //  notifier.notify({
+        //  title:'Request failed',
+        //  sound:true,
+        //  message:"Super daa mapla thiripiyum try pannu"
+        // });
+        await sendEmail("venky15.12.2005@gmail.com", `Docker container ${projectName} creation failed`, `There was an error creating the Docker container for project ${projectName} located at ${projectPath}. Please check the logs for more details.`);
         console.error("Error creating Docker container:", error);
         res.status(500).json({ error: "Failed to create Docker container" });
     }

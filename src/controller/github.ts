@@ -65,15 +65,17 @@ CMD ["npm", "start"]
 `
 
 const reactviteDockerfile = () => `
-FROM node:18-alpine AS builder
+# Build stage
+FROM node:18-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build
 
+# Production stage
 FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `
@@ -113,7 +115,7 @@ export const cloneRepo = async (req: Request, res: Response) => {
         const packageJsonPath = path.join(projectPath, 'package.json');
         let packageJson : any = {};
         if (fs.existsSync(packageJsonPath)) {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+            packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
         }
 
         let dockerfileContent = '';
@@ -154,8 +156,6 @@ export const cloneRepo = async (req: Request, res: Response) => {
             console.log(`Dockerignorefile created at ${dockerignorefilePath}`);
         }
 
-        await sendEmail("venky15.12.2005@gmail.com",`Repository ${projectName} Cloned`, `The repository ${repoUrl} has been successfully cloned to ./repos/${projectName}`);
-        
         await createContainer({
             body: {
                 projectPath: projectPath,
@@ -164,6 +164,7 @@ export const cloneRepo = async (req: Request, res: Response) => {
         } as Request, res);
     } catch (error) {
         console.error("Error cloning repository:", error);
+        sendEmail('venky15.12.2005@gmail.com','Error Occured While Git Access',`There was an error creating the project ${projectName} located at ${repoUrl}. Please check the logs for more details.`)
         res.status(500).json({ error: "Failed to clone repository" });
     }
 };
