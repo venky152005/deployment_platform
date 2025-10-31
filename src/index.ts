@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 8000;
 
 app.use(cors());
 app.use(express.json());
+app.use(subdomainMiddleware);
 
 mongoose.connect(MongoURI).then(() => {
     console.log("Connected to MongoDB");
@@ -30,13 +31,7 @@ app.get("/", (req, res) => {
      res.json({message:"Vanakkam Daa Mapla"});
 });
 
-app.use(subdomainMiddleware);
-
 app.use("/api", router);
-
-server.listen(PORT, () => {
-     console.log(`Server is running on http://localhost:${PORT}`);
-});
 
 io.on("connection", (socket)=>{
  console.log("Socket Io get connected")
@@ -116,4 +111,9 @@ setInterval(async () => {
   } catch (error) {
     console.error("Error:", error);
   }
-})
+}, 60*1000); 
+
+
+server.listen(PORT, () => {
+     console.log(`Server is running on http://localhost:${PORT}`);
+});

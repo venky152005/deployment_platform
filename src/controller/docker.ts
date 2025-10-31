@@ -137,7 +137,7 @@ export const createContainer = async (req: Request, res: Response) => {
     const subdomain = slugify(projectName);
     const finalsubdomain = `${subdomain}-${shortId}`;
 
-    const config = await createNginxConfig(finalsubdomain,hostport);
+    const config = await createNginxConfig(finalsubdomain,8000);
     await enableNginxConfig(finalsubdomain, config);
 
     const doc = await ContainerModel.create({
