@@ -7,75 +7,94 @@ import { createContainer } from "./docker";
 
 const git = simpleGit();
 
-const nodeDockerfile = (entrypoint: string) => `
-FROM node:18-alpine
+const nodeDockerfile = (entrypoint: string)=>`
+FROM oven/bun:latest
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+
+COPY package*.json bun.lockb* ./
+RUN bun install --frozen-lockfile
+
 COPY . .
+
 EXPOSE 3000
-CMD ["npm", "${entrypoint}"]
+CMD ["bun", "start"]
 `
 
 const expressDockerfile = (entrypoint: string) => `
-FROM node:18-alpine
+FROM oven/bun:latest
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+
+COPY package*.json bun.lockb* ./
+RUN bun install --frozen-lockfile
+
 COPY . .
+
 EXPOSE 3000
-CMD ["node", "${entrypoint}"]
+CMD ["bun", "index.js"]
 `
 
 const nextjsDockerfile = () => `
-# ---------- Build Stage ----------
-FROM node:18-alpine AS builder
+# ⚡ Combined and optimized Next.js + Bun + Turbopack Dockerfile
+FROM oven/bun:latest AS builder
 WORKDIR /app
 
-# Copy only package.json first to install dependencies
-COPY package*.json ./
-RUN npm install
+# Copy only what's needed first (better cache)
+COPY package*.json bun.lockb* ./
+
+# Install dependencies (limit jobs to avoid CPU spike)
+RUN bun install --frozen-lockfile --no-progress --concurrent-jobs=2
+
+# Copy the rest of the project
+COPY . .
+
+# Environment setup for Turbo
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_USE_TURBOPACK=1
+ENV TURBOPACK_THREADS=2
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+
+# Build using Bun + Turbopack
+RUN bun run build --turbo
+
+# ⚡ Final lightweight runtime image
+FROM oven/bun:latest AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Copy only needed files for runtime
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+
+EXPOSE 3000
+CMD ["bun", "run", "start"]
+`
+
+const reactviteDockerfile = () => `
+# Use Bun base image (valid tag)
+FROM oven/bun:1 AS builder
+WORKDIR /app
+
+# Copy package files
+COPY package*.json bun.lock* ./
+
+# Install dependencies using Bun
+RUN bun install --frozen-lockfile
 
 # Copy project files
 COPY . .
 
-# Fix Next.js permission issue
-RUN chmod -R +x node_modules/.bin
+# Build the project
+RUN bun run build
 
-# Build the Next.js app
-RUN npm run build
-
-# ---------- Production Stage ----------
-FROM node:18-alpine
-WORKDIR /app
-
-# Copy only necessary files from builder stage
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-
-# Set environment variable
-ENV NODE_ENV production
-
-# Expose port
-EXPOSE 3000
-
-# Start the app
-CMD ["npm", "start"]
-`
-
-const reactviteDockerfile = () => `
-# Build stage
-FROM node:18-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-
-# Production stage
+# Production stage with nginx or whatever you use
 FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `
@@ -83,13 +102,23 @@ CMD ["nginx", "-g", "daemon off;"]
 const laravelDockerfile = () => `
 FROM php:8.2-fpm
 WORKDIR /var/www/html
-COPY . .
-RUN apt-get update && apt-get install -y libzip-dev zip unzip \\
-    && docker-php-ext-install pdo_mysql zip
-EXPOSE 9000
-CMD ["php-fpm"]
-`
 
+# Copy project files
+COPY . .
+
+# Install required PHP extensions
+RUN apt-get update -y && apt-get install -y libzip-dev zip unzip \
+    && docker-php-ext-install pdo_mysql zip
+
+# Log success
+RUN echo "✅ PHP extensions installed successfully"
+
+# Expose port
+EXPOSE 9000
+
+# Start PHP-FPM in verbose mode
+CMD ["php-fpm", "-y", "/usr/local/etc/php-fpm.conf", "-O", "verbose"]
+`
 const getNodeEntrypoint = (packageJson:any)=>{
     if(packageJson.main)return packageJson.main;
     if(packageJson.scripts && packageJson.scripts.start){
@@ -162,6 +191,13 @@ export const cloneRepo = async (req: Request, res: Response) => {
                 projectName: projectName
             }
         } as Request, res);
+
+    try{
+       fs.rmSync(projectPath,{ recursive: true, force: true });
+       console.log(`✅ Deleted cloned repo: ${projectPath}`);
+       }catch(err){
+       console.error(`⚠️ Failed to delete ${projectPath}:`, err);
+       }
     } catch (error) {
         console.error("Error cloning repository:", error);
         sendEmail('venky15.12.2005@gmail.com','Error Occured While Git Access',`There was an error creating the project ${projectName} located at ${repoUrl}. Please check the logs for more details.`)
