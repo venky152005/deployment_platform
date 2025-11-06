@@ -11,9 +11,7 @@ import ContainerModel from "./model/container.model";
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-const docker = new Docker({ host: "localhost", port: 2375 
-    // socketPath: "/var/run/docker.sock"
-}); 
+const docker = new Docker({ socketPath: "/var/run/docker.sock" }); 
 const MongoURI = process.env.MONGO_URI!;
 const PORT = process.env.PORT || 8000;
 
@@ -117,4 +115,4 @@ setInterval(async () => {
 server.listen(PORT, () => {
      console.log(`Server is running on http://localhost:${PORT}`);
 });
-server.timeout = 10 * 60 * 1000; 
+server.timeout = 10 * 60 * 1000

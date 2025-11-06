@@ -36,10 +36,7 @@ async function generateUniquePort() {
   return hostport;
 }
 
-
-const docker = new Docker({ host: "localhost", port: 2375 
-    // socketPath: "/var/run/docker.sock"
-}); 
+const docker = new Docker({ socketPath: "/var/run/docker.sock" }); 
 
 function slugify(name: string){
     return name.toLowerCase()
@@ -69,7 +66,7 @@ export const createContainer = async (req: Request, res: Response) => {
     
     console.log("Docker daemon is reachable");
 
-    const dockerfilePath = `${projectPath}\\Dockerfile`
+    const dockerfilePath = `${projectPath}/Dockerfile`
 
     if(!fs.existsSync(dockerfilePath)){
         return res.status(400).json({ error: "Build the project before creating a Docker image" });
@@ -84,7 +81,7 @@ export const createContainer = async (req: Request, res: Response) => {
 
         const tarstream = tar.pack(dockerPath, {
             entries: fs.readdirSync(dockerPath).filter(file => ![
-            "node_modules",
+                "node_modules",
              ".next",
              ".git",
              "dist",
@@ -103,11 +100,6 @@ export const createContainer = async (req: Request, res: Response) => {
                 dockerfile:'Dockerfile',
                 rm: true,   
                 forcerm: true,
-                buildargs:{
-                    DOCKER_BUILDKIT: "1",
-                    BUILDKIT_INLINE_CACHE: "1"
-                },
-                cachefrom: JSON.stringify([{type: "registry",ref: `${imgname}:latest`}])
             },
             (err: any, stream: any) => {
                 if (err) {
@@ -137,19 +129,21 @@ export const createContainer = async (req: Request, res: Response) => {
 
     if (fs.existsSync(path.join(projectPath, "vite.config.js")) || fs.existsSync(path.join(projectPath, "vite.config.ts"))) {
       containerport = "80";
-    } 
-    else if (fs.existsSync(path.join(projectPath, "server.js")) || fs.existsSync(path.join(projectPath, "app.js"))) {
-      const content = fs.readFileSync(path.join(projectPath, "server.js"), "utf8");
-    if (content.includes("8000") || content.includes("process.env.PORT || 8000")) {
+    }else {
+  const serverFile = ["server.js", "app.js", "index.js"]
+    .map(f => path.join(projectPath, f))
+    .find(f => fs.existsSync(f));
+
+  if (serverFile) {
+    const content = fs.readFileSync(serverFile, "utf8");
+    if (content.includes("8000") || content.includes("process.env.PORT") || content.includes(":8000")) {
       containerport = "8000";
+    } else if (content.includes("3000") || content.includes(":3000")) {
+      containerport = "3000";
     }
-    } 
-    else if (fs.existsSync(path.join(projectPath, "index.js"))) {
-       const content = fs.readFileSync(path.join(projectPath, "index.js"), "utf8");
-    if (content.includes("8000") || content.includes("process.env.PORT || 8000")) {
-       containerport = "8000";
-    }
-   }
+  }
+}
+ 
 
    try{
      container = await docker.createContainer({

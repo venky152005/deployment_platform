@@ -3,11 +3,8 @@ import ContainerModel from "../model/container.model";
 import Docker from "dockerode";
 import httpProxy from "http-proxy";
 import redis from "../utils/redis";
-import net from "net";
 
-const docker = new Docker({ host: "localhost", port: 2375 
-    // socketPath: "/var/run/docker.sock"
-});
+const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 const proxy = httpProxy.createProxyServer({});
 
 proxy.on("proxyReq", (proxyReq, req) => {
@@ -31,6 +28,7 @@ proxy.on("error", (err, req, res: any) => {
 
 export const subdomainMiddleware = async (req: Request, res: Response, next: NextFunction) => {
     const host = (req.headers.host || "").split(':')[0];
+    console.log(" Incoming Host:", host);
     if(!host?.endsWith('.jitalumni.site')) return next();
 
     if (!host) {
@@ -38,7 +36,8 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
     }
     
     const subdomain = host.replace('.jitalumni.site','');
-
+    console.log(subdomain);
+    
     let container;
 
     const cachedid = await redis.get(`subdomain:${subdomain}`);
@@ -61,6 +60,17 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
        "EX", 7200);
     }
 
+
+    if (!container){
+        container = await ContainerModel.findOne({ subdomain });
+     if (!container) {
+        return res.status(404).send("Subdomain not found");
+      }
+       await redis.set(`subdomain:${subdomain}`,container.id, "EX", 7200);
+       await redis.set(`container:${container.id}`,JSON.stringify(container),
+       "EX", 7200);
+
+      }
 
    try{
     if(container.status === "stopped"){
@@ -99,34 +109,36 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
     await redis.set(`container:${container.containerId}`,JSON.stringify(updatedData),
     "EX", 7200);
 
-   const dockerContainer = docker.getContainer(container.containerId);
-    const inspectData = await dockerContainer.inspect();
+    const dockerContainer = docker.getContainer(container.containerId);
+    const inspectData = await dockerContainer.inspect(); 
     const networks = inspectData.NetworkSettings.Networks;
     const firstNetwork = Object.values(networks)[0];
     const containerIP = firstNetwork?.IPAddress;
 
     if (!containerIP) {
-      console.error(`No IP found for container ${container.containerId}`);
+      console.error(` No IP found for container ${container.containerId}`);
       return res.status(500).send("Container IP not found");
     }
 
     const exposedPorts = Object.keys(inspectData.NetworkSettings.Ports || {});
-    let port = 3000;
+    let port = 3000; 
 
     if (exposedPorts.includes("80/tcp")) port = 80;
     else if (exposedPorts.includes("3000/tcp")) port = 3000;
+    else if (exposedPorts.includes("8000/tcp")) port = 8000;
 
     const target = `http://${containerIP}:${port}`;
-    console.log(`Proxying request for ${subdomain} → ${target}`);
+    console.log(` Proxying request for ${subdomain} → ${target}`);
 
     proxy.web(req, res, {
      target,
      changeOrigin: true,
      selfHandleResponse: false,
-   });
+   }); 
    }catch (error) {
     console.error("Error in subdomain middleware:", error);
      if (!res.headersSent)
       return res.status(500).send("Internal server error");
   }
 }
+
