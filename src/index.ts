@@ -117,3 +117,4 @@ setInterval(async () => {
 server.listen(PORT, () => {
      console.log(`Server is running on http://localhost:${PORT}`);
 });
+server.timeout = 10 * 60 * 1000; 

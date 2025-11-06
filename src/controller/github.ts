@@ -11,20 +11,20 @@ const nodeDockerfile = (entrypoint: string) => `
 FROM node:18-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm install --verbose
 COPY . .
 EXPOSE 3000
-CMD ["npm", "${entrypoint}"]
+CMD ["npm", "start"]
 `
 
 const expressDockerfile = (entrypoint: string) => `
 FROM node:18-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm install --verbose
 COPY . .
 EXPOSE 3000
-CMD ["node", "${entrypoint}"]
+CMD ["node", "index.js"]
 `
 
 const nextjsDockerfile = () => `
@@ -32,35 +32,25 @@ const nextjsDockerfile = () => `
 FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Copy only package.json first to install dependencies
 COPY package*.json ./
-RUN npm install
-
-# Copy project files
+RUN npm install --verbose
 COPY . .
 
-# Fix Next.js permission issue
 RUN chmod -R +x node_modules/.bin
 
-# Build the Next.js app
-RUN npm run build
+RUN npm run build --verbose
 
 # ---------- Production Stage ----------
 FROM node:18-alpine
 WORKDIR /app
 
-# Copy only necessary files from builder stage
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 
-# Set environment variable
 ENV NODE_ENV production
 
-# Expose port
 EXPOSE 3000
-
-# Start the app
 CMD ["npm", "start"]
 `
 
@@ -69,9 +59,9 @@ const reactviteDockerfile = () => `
 FROM node:18-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm install --verbose
 COPY . .
-RUN npm run build
+RUN npm run build --verbose
 
 # Production stage
 FROM nginx:alpine
@@ -84,10 +74,11 @@ const laravelDockerfile = () => `
 FROM php:8.2-fpm
 WORKDIR /var/www/html
 COPY . .
-RUN apt-get update && apt-get install -y libzip-dev zip unzip \\
+RUN apt-get update -y && apt-get install -y libzip-dev zip unzip \
     && docker-php-ext-install pdo_mysql zip
+RUN echo "✅ PHP extensions installed successfully"
 EXPOSE 9000
-CMD ["php-fpm"]
+CMD ["php-fpm", "-y", "/usr/local/etc/php-fpm.conf", "-O", "verbose"]
 `
 
 const getNodeEntrypoint = (packageJson:any)=>{
@@ -120,10 +111,16 @@ export const cloneRepo = async (req: Request, res: Response) => {
 
         let dockerfileContent = '';
         let dockerignoreContent = `
+            node_modules
+            npm-debug.log
             .git
-            .gitignore
-            Dockerfile
+            .nyc_output
+            coverage
+            .DS_Store
             *.log
+            .dockerignore
+            README.md
+           .gitignore
         `; 
 
         if (packageJson.dependencies && packageJson.dependencies.next) {
@@ -162,6 +159,14 @@ export const cloneRepo = async (req: Request, res: Response) => {
                 projectName: projectName
             }
         } as Request, res);
+
+    try {
+      fs.rmSync(projectPath, { recursive: true, force: true });
+      console.log(`✅ Deleted cloned repo: ${projectPath}`);
+    } catch (err) {
+      console.error(`⚠️ Failed to delete ${projectPath}:`, err);
+    }
+
     } catch (error) {
         console.error("Error cloning repository:", error);
         sendEmail('venky15.12.2005@gmail.com','Error Occured While Git Access',`There was an error creating the project ${projectName} located at ${repoUrl}. Please check the logs for more details.`)

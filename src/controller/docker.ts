@@ -1,6 +1,5 @@
 import Docker from "dockerode";
 import { Request, Response } from "express";
-// import notifier from "node-notifier";
 import { sendEmail } from "./email";
 import getPort from "get-port";
 import {v4 as uuid} from "uuid";
@@ -9,6 +8,34 @@ import fs from "fs";
 import path from "path";
 import { createNginxConfig, enableNginxConfig } from "../utils/nginx";
 import ContainerModel from "../model/container.model";
+import redis from "../utils/redis";
+
+async function generateUniquePort() {
+  let hostport;
+
+  while (true) {
+    const randomPort = 4000 + Math.floor(Math.random() * 1000);
+
+    const cached = await redis.get(`port:${randomPort}`);
+    if (cached) {
+      console.log(`Port ${randomPort} found in Redis cache — regenerating...`);
+      continue;
+    }
+
+    const exists = await ContainerModel.exists({ port: randomPort });
+    if (exists) {
+        await redis.set(`port:${randomPort}`, "used", "EX", 300);
+      console.log(`Port ${randomPort} already used — regenerating...`);
+      continue;
+    }
+
+    hostport = await getPort({ port: randomPort });
+    if (hostport === randomPort) break; 
+  }
+
+  return hostport;
+}
+
 
 const docker = new Docker({ host: "localhost", port: 2375 
     // socketPath: "/var/run/docker.sock"
@@ -57,11 +84,16 @@ export const createContainer = async (req: Request, res: Response) => {
 
         const tarstream = tar.pack(dockerPath, {
             entries: fs.readdirSync(dockerPath).filter(file => ![
-                "node_modules",
-                ".next",
-                ".git",
-                "dist",
-                "build"].includes(file)
+            "node_modules",
+             ".next",
+             ".git",
+             "dist",
+             "build", 
+             ".cache",
+             "coverage",
+             "*.log",
+             "*.tmp",
+             ".DS_Store"].includes(file)
             )
         });
 
@@ -71,10 +103,11 @@ export const createContainer = async (req: Request, res: Response) => {
                 dockerfile:'Dockerfile',
                 rm: true,   
                 forcerm: true,
-                pull: true, 
                 buildargs:{
-                    DOCKER_BUILDKIT: "1"
-                }
+                    DOCKER_BUILDKIT: "1",
+                    BUILDKIT_INLINE_CACHE: "1"
+                },
+                cachefrom: JSON.stringify([{type: "registry",ref: `${imgname}:latest`}])
             },
             (err: any, stream: any) => {
                 if (err) {
@@ -95,11 +128,7 @@ export const createContainer = async (req: Request, res: Response) => {
             });
     });
 
-    const hostport = await getPort({
-     port: Array.from({ length: 1000 }, (_, i) => 4000 + i)
-    });
-
-
+    const hostport = await generateUniquePort();
     const containername = `${imageName}-${Date.now()}`
 
     let container
@@ -108,7 +137,19 @@ export const createContainer = async (req: Request, res: Response) => {
 
     if (fs.existsSync(path.join(projectPath, "vite.config.js")) || fs.existsSync(path.join(projectPath, "vite.config.ts"))) {
       containerport = "80";
+    } 
+    else if (fs.existsSync(path.join(projectPath, "server.js")) || fs.existsSync(path.join(projectPath, "app.js"))) {
+      const content = fs.readFileSync(path.join(projectPath, "server.js"), "utf8");
+    if (content.includes("8000") || content.includes("process.env.PORT || 8000")) {
+      containerport = "8000";
     }
+    } 
+    else if (fs.existsSync(path.join(projectPath, "index.js"))) {
+       const content = fs.readFileSync(path.join(projectPath, "index.js"), "utf8");
+    if (content.includes("8000") || content.includes("process.env.PORT || 8000")) {
+       containerport = "8000";
+    }
+   }
 
    try{
      container = await docker.createContainer({
@@ -144,29 +185,31 @@ export const createContainer = async (req: Request, res: Response) => {
         containerId: container.id,
         containername: containername,
         subdomain: finalsubdomain,
-        port: hostport,
+        port: hostport, 
         image: imgname,
         status: "running",
         lastActive: new Date(),
     })
 
+    await redis.set(`container:${container.id}`,JSON.stringify({
+        containerId: container.id,
+        containername: containername,
+        subdomain: finalsubdomain,
+        port: hostport,
+        image: imgname,
+        status: "running",
+        lastActive: new Date(),
+    }),
+    "EX", 7200);
+
+    await redis.set(`subdomain:${finalsubdomain}`, container.id, "EX", 7200);
+
     const elapsed = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
     const publicUrl = `https://${finalsubdomain}.jitalumni.site`;
-
-    // notifier.notify({
-    //      title:'Request completed successfully',
-    //      sound:true,
-    //      message:"Super daa mapla"
-    //     });
 
     res.status(200).json({ message: `Docker container ${projectName} created and started in ${totalTime} seconds`,url: publicUrl, hostport, containerId: container.id || containername, deployment: doc, elapsed, });
 
     } catch (error) {
-        //  notifier.notify({
-        //  title:'Request failed',
-        //  sound:true,
-        //  message:"Super daa mapla thiripiyum try pannu"
-        // });
         await sendEmail("venky15.12.2005@gmail.com", `Docker container ${projectName} creation failed`, `There was an error creating the Docker container for project ${projectName} located at ${projectPath}. Please check the logs for more details.`);
         console.error("Error creating Docker container:", error);
         res.status(500).json({ error: "Failed to create Docker container" });

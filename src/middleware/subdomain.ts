@@ -1,10 +1,32 @@
 import { Request, Response, NextFunction } from "express";
 import ContainerModel from "../model/container.model";
 import Docker from "dockerode";
-import { createProxyMiddleware } from "http-proxy-middleware";
+import httpProxy from "http-proxy";
+import redis from "../utils/redis";
+import net from "net";
 
 const docker = new Docker({ host: "localhost", port: 2375 
     // socketPath: "/var/run/docker.sock"
+});
+const proxy = httpProxy.createProxyServer({});
+
+proxy.on("proxyReq", (proxyReq, req) => {
+  console.log(`Forwarding ${req.method} ${req.url}`);
+});
+
+proxy.on("proxyRes", (proxyRes, req, res) => {
+  delete proxyRes.headers['transfer-encoding'];
+  console.log(`Response — Status: ${proxyRes.statusCode}`);
+});
+
+proxy.on("error", (err, req, res: any) => {
+  console.error(`Proxy error:`, err.message);
+  if (!res.headersSent) {
+    if ('writeHead' in res) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+    }
+  }
+  res.end("Proxy failed");
 });
 
 export const subdomainMiddleware = async (req: Request, res: Response, next: NextFunction) => {
@@ -16,10 +38,29 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
     }
     
     const subdomain = host.replace('.jitalumni.site','');
-    const container = await ContainerModel.findOne({ subdomain });
-    if (!container) {
-        return res.status(404).send("Subdomain not found");
+
+    let container;
+
+    const cachedid = await redis.get(`subdomain:${subdomain}`);
+    if (cachedid) {
+       const cachedcontainer = await redis.get(`container:${cachedid}`);
+       if(cachedcontainer){
+        console.log("Container data fetched from Redis cache");
+
+         const parsed = JSON.parse(cachedcontainer);
+         container = await ContainerModel.findById(parsed._id);
+       }
     }
+    if(!container) {
+      container = await ContainerModel.findOne({ subdomain });
+     if (!container) {
+        return res.status(404).send("Subdomain not found");
+      }
+       await redis.set(`subdomain:${subdomain}`,container.id, "EX", 7200);
+       await redis.set(`container:${container.id}`,JSON.stringify(container),
+       "EX", 7200);
+    }
+
 
    try{
     if(container.status === "stopped"){
@@ -45,23 +86,47 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
     container.lastActive = new Date();
     await container.save();
 
-    const target = `http://127.0.0.1:${container.port}`;
+    const updatedData = {
+     containerId: container.containerId,
+     containername: container.containername,
+     subdomain: container.subdomain,
+     port: container.port,
+     image: container.image,
+     status: "running",
+     lastActive: container.lastActive,
+   };
+
+    await redis.set(`container:${container.containerId}`,JSON.stringify(updatedData),
+    "EX", 7200);
+
+   const dockerContainer = docker.getContainer(container.containerId);
+    const inspectData = await dockerContainer.inspect();
+    const networks = inspectData.NetworkSettings.Networks;
+    const firstNetwork = Object.values(networks)[0];
+    const containerIP = firstNetwork?.IPAddress;
+
+    if (!containerIP) {
+      console.error(`No IP found for container ${container.containerId}`);
+      return res.status(500).send("Container IP not found");
+    }
+
+    const exposedPorts = Object.keys(inspectData.NetworkSettings.Ports || {});
+    let port = 3000;
+
+    if (exposedPorts.includes("80/tcp")) port = 80;
+    else if (exposedPorts.includes("3000/tcp")) port = 3000;
+
+    const target = `http://${containerIP}:${port}`;
     console.log(`Proxying request for ${subdomain} → ${target}`);
 
-    const proxy = createProxyMiddleware({
-      target,
-      changeOrigin: true,
-      ws: true,
-      onError(err: Error, req: Request, res: Response) {
-        console.error(`Proxy error for ${subdomain}:`, err);
-        res.status(500).send("Error proxying request");
-      },
-    } as any);
-
-    return proxy(req, res, next);
-
-}catch (error) {
+    proxy.web(req, res, {
+     target,
+     changeOrigin: true,
+     selfHandleResponse: false,
+   });
+   }catch (error) {
     console.error("Error in subdomain middleware:", error);
-    return res.status(500).send("Internal server error");
+     if (!res.headersSent)
+      return res.status(500).send("Internal server error");
   }
 }
