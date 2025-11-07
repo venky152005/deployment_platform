@@ -73,12 +73,15 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
       }
 
    try{
-    if(container.status === "stopped"){
+
+    const dockerstatus = await docker.getContainer(container.containerId).inspect();
+    
+    if(dockerstatus.State.Status !== "running"){
         const dockerContainer = docker.getContainer(container.containerId);
         await dockerContainer.start();
 
          let inspectData;
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 15; i++) {
         inspectData = await dockerContainer.inspect();
         if (inspectData.State.Running) break;
         console.log("Waiting for container to start...");
