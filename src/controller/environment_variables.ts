@@ -53,6 +53,8 @@ export const setEnvironmentVariables = async (req: Request, res: Response) => {
             { upsert: true },
         );
 
+        console.log("variables:",variables);
+
         await redeployWithNewVariables({
             body: {
                 _id: container._id,
@@ -60,6 +62,7 @@ export const setEnvironmentVariables = async (req: Request, res: Response) => {
                 subdomain: container.subdomain,
                 containerId: container.containerId,
                 containerport: container.containerport, 
+                variables: variables
             }
         } as Request, res);
 
@@ -73,6 +76,7 @@ export const setEnvironmentVariables = async (req: Request, res: Response) => {
 
 export const redeployWithNewVariables = async (req: Request, res: Response) => {
       const { _id, image, subdomain, containerId, containerport, variables } = req.body;
+      console.log(_id, image, subdomain, containerId, containerport, variables);
        const startTime = new Date();
        console.log("Time:", new Date().toLocaleString());
 
@@ -86,31 +90,37 @@ export const redeployWithNewVariables = async (req: Request, res: Response) => {
        
        console.log("Docker daemon is reachable");
    
-       const dockerfilePath = `../repos`;
+       const dockerfilePath = `./repos`;
        console.log("Using Docker path:", dockerfilePath);
        const envfilePath = path.join(dockerfilePath,'.env');
    
        if(!fs.existsSync(dockerfilePath)){
-           return res.status(400).json({ error: "Build the project before creating a Docker image" });
+           return console.log({ error: "Build the project before creating a Docker image" });
        }
 
-       const envData = Object.entries(variables || {})
-       .map(([key, value]) => `${key}=${value}`)
-       .join('\n');
+       const envData = Object.entries(variables || {}).map(([key, value]) => `${key}=${value}`).join('\n');
+       console.log("Generated .env data:\n", envData);
 
        fs.writeFileSync(envfilePath, envData);
        console.log("Environment variables written to .env file");
 
        const Dockerfile = `
-       FROM ${image}
-       WORKDIR /app
-       COPY .env /app/.env
-       ENV NODE_ENV=production
-       EXPOSE ${containerport}
-       CMD ["sh", "-c", "bun server.js || bun start || yarn start || npm start || bun run start || bun index.js || node index.js"]
-       `
+FROM ${image}
 
-         fs.writeFileSync(path.join(dockerfilePath,'Dockerfile'), Dockerfile);
+WORKDIR /app
+
+COPY . .
+COPY .env /app/.env
+
+EXPOSE ${containerport}
+
+ENV NODE_ENV=production
+
+CMD ["bun", "run", "src/index.ts"]
+`;
+
+        
+       fs.writeFileSync(path.join(dockerfilePath,'Dockerfile'), Dockerfile);
 
        const imageName = image.split(":")[0];
 
@@ -178,34 +188,71 @@ export const redeployWithNewVariables = async (req: Request, res: Response) => {
         console.error("Container create error =>", err);
         throw err;
       }
-   
-       await container.start().catch(err => {
-     console.error("Container start error =>", err);
-     throw err;
-   });
 
-       const healthUrl =`http://localhost:${hostport}`;
+      const attachStream = await container.attach({
+  stream: true,
+  stdout: true,
+  stderr: true,
+});
+
+attachStream.pipe(process.stdout);
+
+console.log("🚀 Starting container...");
+await container.start();
+
+
+    let containerIP = null;
+for (let i = 0; i < 10; i++) {
+  const inspectData = await container.inspect();
+  const networks = inspectData.NetworkSettings?.Networks;
+  const firstNetwork = networks && Object.values(networks)[0];
+  containerIP = firstNetwork?.IPAddress;
+  const healthState = inspectData.State?.Health?.Status || "unknown";
+  
+  console.log(`🔁 Attempt ${i + 1}: IP=${containerIP || "N/A"} | Health=${healthState}`);
+
+  if (containerIP && healthState === "healthy") {
+    console.log("✅ Container is ready and healthy!");
+    break;
+  }
+  if (containerIP) break;
+  await new Promise(res => setTimeout(res, 3000)); // retry every second
+}
+
+
+if (!containerIP) {
+  console.error("❌ Could not fetch container IP after retries.");
+} else {
+  console.log("🌐 IPAddress:", containerIP);
+}
+
+       const healthUrl =`http://${containerIP}:${containerport}`;
        console.log(`Container started and accessible at ${healthUrl}`);
 
        let isHealthy = false;
        for (let i = 0; i < 10; i++) {
            try {
-               const response = await axios.get(healthUrl);
+               const response = await axios.get(healthUrl,{
+               timeout: 5000, // 5 seconds
+               headers: { 'Accept': 'application/json'
+               }});
+               console.log(`Health check attempt ${i + 1}: Status ${response.status}`);
                if (response.status === 200) {
                    isHealthy = true;
                    break;
                }
            } catch (error) {
-            console.error("Health check error =>", error);
-        }
+            console.log(`⏳ Health check ${i + 1}/10 failed. Retrying...`);
+  }
+  await new Promise(res => setTimeout(res, 1000));
        }
 
        if (!isHealthy) {
               console.error(`Container ${container.id} failed health checks`);
-              await container.stop().catch(() => {});
-              await container.remove().catch(() => {});
+              await container.stop().catch(() => {console.error("Error stopping container after failed health checks")});
+              await container.remove().catch(() => {console.error("Error removing container after failed health checks")});
               await docker.getImage(imgname).remove({ force: true }).catch(() => {});
-              return res.status(500).json({ error: "Container failed health checks" });
+              return console.log({ error: "Container failed health checks" });
        }
        console.log(`Container ${container.id} passed health checks`);
 
@@ -248,12 +295,11 @@ export const redeployWithNewVariables = async (req: Request, res: Response) => {
    
        const elapsed = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
 
-       res.status(200).json({ message: `Docker environment ${imageName} created and started in ${totalTime} seconds`, hostport, containerId: container.id || containername, elapsed, });
+       console.log(`✅ Redeployed container ${container.id} in ${elapsed} seconds on port ${hostport}`);
 
        } catch (error) {
            await sendEmail("venky15.12.2005@gmail.com", `Docker environment variables for ${image} creation failed`, `There was an error creating the Docker environment for project ${image}. Please check the logs for more details.`);
            console.error("Error creating Docker environment:", error);
-           res.status(500).json({ error: "Failed to create Docker environment" });
        }
       
    };
