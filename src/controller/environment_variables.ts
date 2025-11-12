@@ -73,6 +73,7 @@ export const setEnvironmentVariables = async (req: Request, res: Response) => {
 
 export const redeployWithNewVariables = async (req: Request, res: Response) => {
       const { _id, image, subdomain, containerId, containerport, variables } = req.body;
+      console.log(_id, image, subdomain, containerId, containerport, variables);
        const startTime = new Date();
        console.log("Time:", new Date().toLocaleString());
 
@@ -91,24 +92,54 @@ export const redeployWithNewVariables = async (req: Request, res: Response) => {
        const envfilePath = path.join(dockerfilePath,'.env');
    
        if(!fs.existsSync(dockerfilePath)){
-           return res.status(400).json({ error: "Build the project before creating a Docker image" });
+           return console.log({ error: "Build the project before creating a Docker image" });
        }
 
        const envData = Object.entries(variables || {})
        .map(([key, value]) => `${key}=${value}`)
        .join('\n');
+       console.log("Generated .env data:\n", envData);
 
        fs.writeFileSync(envfilePath, envData);
        console.log("Environment variables written to .env file");
 
        const Dockerfile = `
        FROM ${image}
+
        WORKDIR /app
+
+       COPY . .
        COPY .env /app/.env
-       ENV NODE_ENV=production
-       EXPOSE ${containerport}
-       CMD ["sh", "-c", "bun server.js || bun start || yarn start || npm start || bun run start || bun index.js || node index.js"]
-       `
+
+       # Install dependencies (auto detects bun, yarn, npm, composer)
+       RUN if [ -f "package.json" ]; then \
+           if command -v bun >/dev/null 2>&1; then bun install; \
+        elif [ -f "yarn.lock" ]; then yarn install --production; \
+        else npm install --production; fi; \
+        elif [ -f "composer.json" ]; then \
+        curl -sS https://getcomposer.org/installer | php && php composer.phar install --no-dev --optimize-autoloader; \
+        fi
+
+       # Build step for frontend frameworks
+       RUN if [ -f "vite.config.js" ] || [ -f "next.config.js" ]; then \
+           if command -v bun >/dev/null 2>&1; then bun run build; \
+        elif [ -f "yarn.lock" ]; then yarn build; \
+        else npm run build; fi; \
+        fi
+
+        EXPOSE ${containerport}
+
+        ENV NODE_ENV=production
+
+        CMD ["sh", "-c", " \
+        if [ -f 'server.js' ]; then bun server.js || node server.js; \
+        elif [ -f 'index.js' ]; then bun index.js || node index.js; \
+        elif [ -f 'artisan' ]; then php artisan serve --host=0.0.0.0 --port=${containerport}; \
+        elif [ -f 'next.config.js' ]; then npm run start || yarn start; \
+        elif [ -f 'vite.config.js' ]; then npm run preview || yarn preview; \
+        else npm start || yarn start; fi"]
+      `;
+
 
          fs.writeFileSync(path.join(dockerfilePath,'Dockerfile'), Dockerfile);
 
@@ -178,19 +209,34 @@ export const redeployWithNewVariables = async (req: Request, res: Response) => {
         console.error("Container create error =>", err);
         throw err;
       }
+
+      const logStream = await container.logs({
+  follow: true,
+  stdout: true,
+  stderr: true,
+});
+logStream.on("data", chunk => process.stdout.write(chunk.toString()));
    
        await container.start().catch(err => {
      console.error("Container start error =>", err);
      throw err;
    });
 
-       const healthUrl =`http://localhost:${hostport}`;
+    const dockerContainer = docker.getContainer(container.id);
+    const inspectData = await dockerContainer.inspect(); 
+    const networks = inspectData.NetworkSettings.Networks;
+    const firstNetwork = Object.values(networks)[0];
+    const containerIP = firstNetwork?.IPAddress;
+
+
+       const healthUrl =`http://${containerIP}:${containerport}`;
        console.log(`Container started and accessible at ${healthUrl}`);
 
        let isHealthy = false;
        for (let i = 0; i < 10; i++) {
            try {
                const response = await axios.get(healthUrl);
+               console.log(`Health check attempt ${i + 1}: Status ${response.status}`);
                if (response.status === 200) {
                    isHealthy = true;
                    break;
@@ -202,10 +248,10 @@ export const redeployWithNewVariables = async (req: Request, res: Response) => {
 
        if (!isHealthy) {
               console.error(`Container ${container.id} failed health checks`);
-              await container.stop().catch(() => {});
-              await container.remove().catch(() => {});
+              await container.stop().catch(() => {console.error("Error stopping container after failed health checks")});
+              await container.remove().catch(() => {console.error("Error removing container after failed health checks")});
               await docker.getImage(imgname).remove({ force: true }).catch(() => {});
-              return res.status(500).json({ error: "Container failed health checks" });
+              return console.log({ error: "Container failed health checks" });
        }
        console.log(`Container ${container.id} passed health checks`);
 
@@ -248,12 +294,11 @@ export const redeployWithNewVariables = async (req: Request, res: Response) => {
    
        const elapsed = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
 
-       res.status(200).json({ message: `Docker environment ${imageName} created and started in ${totalTime} seconds`, hostport, containerId: container.id || containername, elapsed, });
+       console.log(`✅ Redeployed container ${container.id} in ${elapsed}/${totalTime} seconds on port ${hostport}`);
 
        } catch (error) {
            await sendEmail("venky15.12.2005@gmail.com", `Docker environment variables for ${image} creation failed`, `There was an error creating the Docker environment for project ${image}. Please check the logs for more details.`);
            console.error("Error creating Docker environment:", error);
-           res.status(500).json({ error: "Failed to create Docker environment" });
        }
       
    };
