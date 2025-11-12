@@ -6,7 +6,7 @@ WORKDIR /app
 COPY . .
 COPY .env /app/.env
 
-EXPOSE 3000
+EXPOSE 8000
 
 ENV NODE_ENV=production
 

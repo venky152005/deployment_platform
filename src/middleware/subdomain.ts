@@ -106,6 +106,7 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
      port: container.port,
      image: container.image,
      status: "running",
+     containerport: container.containerport,
      lastActive: container.lastActive,
    };
 
@@ -114,6 +115,7 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
 
     const dockerContainer = docker.getContainer(container.containerId);
     const inspectData = await dockerContainer.inspect(); 
+    console.log("Data:",inspectData);
     const networks = inspectData.NetworkSettings.Networks;
     const firstNetwork = Object.values(networks)[0];
     const containerIP = firstNetwork?.IPAddress;
@@ -124,11 +126,9 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
     }
 
     const exposedPorts = Object.keys(inspectData.NetworkSettings.Ports || {});
-    let port = 3000; 
-
-    if (exposedPorts.includes("80/tcp")) port = 80;
-    else if (exposedPorts.includes("3000/tcp")) port = 3000;
-    else if (exposedPorts.includes("8000/tcp")) port = 8000;
+    console.log("exposed:",exposedPorts);
+    const port = container.containerport;
+    console.log("port:",port) 
 
     const target = `http://${containerIP}:${port}`;
     console.log(` Proxying request for ${subdomain} → ${target}`);
