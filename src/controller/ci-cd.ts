@@ -23,7 +23,9 @@ export const connect = async(req: AuthRequest, res: Response) => {
          allow_signup:"true",
     }).toString();
 
-    res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+    const redirectUrl = `https://github.com/login/oauth/authorize?${params}`;
+
+    return res.json({ url: redirectUrl });
 }
 
 export const callback = async(req:Request, res:Response) =>{
@@ -37,14 +39,15 @@ export const callback = async(req:Request, res:Response) =>{
         return res.status(400).json({message: 'State is missing'})
     }
 
-    const user = await User.findOne({state});
+    const user = await User.findOne({github_oauth_state: state});
     const _id = user!._id;
 
     try {
         const tokenresp = await axios.post('https://github.com/login/oauth/access_token',{
             client_id: process.env.GITHUB_CLIENT_ID,
             client_secret: process.env.GITHUB_CLIENT_SECRET,
-            code
+            code,
+            state
         },{ 
             headers: {Accept: 'application/json'} 
         });
@@ -57,7 +60,9 @@ export const callback = async(req:Request, res:Response) =>{
             { $set:{ accessToken: accessToken }}
         )
 
-        res.status(200).json({ ok: true, accessToken});
+         return res.redirect(
+      "https://deployment-platform-frontend.vercel.app/auth/github/callback"
+    );
     } catch (error: any) {
         console.error("OAuth callback error:", error.response?.data || error.message);
         res.status(500).send("GitHub auth failed");
@@ -66,13 +71,15 @@ export const callback = async(req:Request, res:Response) =>{
 
 export const repolist = async(req: AuthRequest, res: Response) => {
    const _id = req.user?.userid;
-   const userinfo = await User.findById(_id);
+   const userinfo = await User.findById(_id).select("+accessToken");
+   console.log("userinfo:",userinfo);
 
    if(!userinfo){
      return res.status(401).json({message: 'User not found for Repolist'});
    }
 
    const token = userinfo.accessToken;
+    console.log('token:', token);
 
    const resp = await axios.get(`https://api.github.com/user/repos`,{
       headers: {
@@ -88,41 +95,50 @@ export const create_webhook = async(req: AuthRequest, res: Response) => {
     const { repoFullName } = req.body;
     const _id = req.user?.userid;
 
+    console.log('reponame:',repoFullName);
+
     const webhookSecret = crypto.randomBytes(16).toString('hex');
 
     if(!_id){
         return res.status(400).json({message: 'Id is not found'});
     }
 
-    const user = await User.findById(_id);
+    const user = await User.findById(_id).select("+accessToken");
     const accessToken = user!.accessToken;
+    console.log('token:',accessToken);
 
     if(!accessToken){
         return res.status(401).json({message: "Access token didn't found"});
     }
     
-    await axios.post(`https://api.github.com/repos/${repoFullName}/hook`,{
+    const resp = await axios.post(`https://api.github.com/repos/${repoFullName}/hooks`,{
       name:'web',
       active: true,
       events: ['push'],
       config:{
         url: `${process.env.SERVER_URL}/webhook`,
-        content_type: json,
+        content_type: 'json',
         secret: webhookSecret
       }
     },{
-        headers:{ Authorization: `Bearer ${accessToken}`}
+        headers:{ 
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github.v3+json"
+        }
     }
 );
+
+  console.log(resp.data);
+
+const repoURL = `https://github.com/${repoFullName}.git`;
+const projectName = repoFullName.split('/')[1];
 
 await Project.create({
     owner: _id,
     repoFullName: repoFullName,
+    cloneURL: repoURL,
     webhookSecret: webhookSecret
 });
-
-const repoURL = `https://github.com/${repoFullName}.git`;
-const projectName = repoFullName.split('/')[1];
 
  await cloneRepo({
         body:{

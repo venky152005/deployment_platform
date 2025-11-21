@@ -35,6 +35,15 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
         return res.status(400).send("Host header is missing");
     }
     
+     const SYSTEM_DOMAINS = new Set([
+    "api.jitalumni.site",
+  ]);
+
+  if (SYSTEM_DOMAINS.has(host)) {
+    console.log("Skipping wildcard middleware for:", host);
+    return next();
+  }
+
     const subdomain = host.replace('.jitalumni.site','');
     console.log(subdomain);
     
@@ -115,7 +124,6 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
 
     const dockerContainer = docker.getContainer(container.containerId);
     const inspectData = await dockerContainer.inspect(); 
-    console.log("Data:",inspectData);
     const networks = inspectData.NetworkSettings.Networks;
     const firstNetwork = Object.values(networks)[0];
     const containerIP = firstNetwork?.IPAddress;
