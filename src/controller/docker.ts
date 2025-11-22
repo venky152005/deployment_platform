@@ -9,6 +9,7 @@ import path from "path";
 import { createNginxConfig, enableNginxConfig } from "../utils/nginx";
 import ContainerModel from "../model/container.model";
 import redis from "../utils/redis";
+import { AuthRequest } from "../middleware/authmiddleware";
 
 async function generateUniquePort() {
   let hostport;
@@ -46,8 +47,8 @@ function slugify(name: string){
     .slice(0, 40);
 } 
 
-export const createContainer = async (req: Request, res: Response) => {
-
+export const createContainer = async (req: AuthRequest, res: Response) => {
+    const _id = req.user?.userid;
     const { projectPath, projectName } = req.body;
 
     const startTime = new Date();
@@ -94,12 +95,17 @@ export const createContainer = async (req: Request, res: Response) => {
             )
         });
 
+        const hashlockfile = fs.existsSync(path.join(dockerPath, "bun.lockb"));
+
         docker.buildImage(
             tarstream, {
                 t: imgname,
                 dockerfile:'Dockerfile',
                 rm: true,   
                 forcerm: true,
+                buildargs:{
+                   USE_FROZEN: hashlockfile ? 'true' : 'false',
+                }
             },
             (err: any, stream: any) => {
                 if (err) {
@@ -176,6 +182,8 @@ export const createContainer = async (req: Request, res: Response) => {
     await enableNginxConfig(finalsubdomain, config);
 
     const doc = await ContainerModel.create({
+        ownerId : _id,
+        projectname: projectName,
         containerId: container.id,
         containername: containername,
         subdomain: finalsubdomain,
@@ -186,6 +194,8 @@ export const createContainer = async (req: Request, res: Response) => {
     })
 
     await redis.set(`container:${container.id}`,JSON.stringify({
+        ownerId : _id,
+        projectname: projectName,
         containerId: container.id,
         containername: containername,
         subdomain: finalsubdomain,

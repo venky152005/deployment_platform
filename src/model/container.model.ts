@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 
 interface ContainerDocument extends mongoose.Document {
+    owner: string;
+    projectname: string;
     containerId: string;
     containername: string;
     containerport?: number;
@@ -15,6 +17,8 @@ interface ContainerDocument extends mongoose.Document {
 }
 
 const containerSchema = new mongoose.Schema<ContainerDocument>({
+    owner: { type: String, required: true },
+    projectname: {type: String, required: true },
     containerId: { type: String, required: true },
     containername: { type: String, required: true },
     containerport: { type: Number },
