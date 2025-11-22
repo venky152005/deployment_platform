@@ -7,7 +7,7 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-COPY package*.json bun.lockb* ./
+COPY package*.json bun.lockb* . || true
 
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
         bun install --frozen-lockfile ; \
@@ -29,7 +29,7 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-COPY package*.json bun.lockb* ./
+COPY package*.json bun.lockb* . || true
 
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
         bun install --frozen-lockfile ; \
@@ -95,7 +95,7 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-COPY package*.json bun.lockb* ./
+COPY package*.json bun.lockb* . || true
 
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
         bun install --frozen-lockfile ; \
