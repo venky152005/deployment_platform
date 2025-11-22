@@ -150,21 +150,17 @@ return res.status(200).json({message: "webhook connected"});
 }
 
 export const webhook = async(req: Request, res: Response) => {
- try{
-    console.log("webhook triggered");
+    try{
+    console.log("wehook triggered")
     const raw = req.body;
     const payload = JSON.parse(raw.toString());
-
-    console.log(raw);
 
     const project = await Project.findOne({ repoFullName: payload.repository.full_name });
     if(!project ){
         return res.status(401).json({message:"Repo name is required"})
     }
 
-    console.log('first step completed');
-
-    const signature = req.headers['x-hub-signature-sha256'] as String;
+    const signature = req.headers['x-hub-signature-256'] as String;
 
     const hmac = crypto.createHmac('sha256',project!.webhookSecret);
     hmac.update(raw);
@@ -187,7 +183,7 @@ export const webhook = async(req: Request, res: Response) => {
     } as Request,res);
 
     return res.status(200).json({message: 'Project deploy successfully'});
-}catch(err){
-  return res.status(500).json({message:"Internal error occured",err});    
-}
+    }catch(err){
+        return res.status(500).json({message:"Internal error occured",err});
+    }
 }

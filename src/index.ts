@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import router from "./routes/route";
 import { subdomainMiddleware } from "./middleware/subdomain";
 import ContainerModel from "./model/container.model";
+import { webhook } from "./controller/ci-cd";
 
 const app = express();
 const server = http.createServer(app);
@@ -16,6 +17,7 @@ const MongoURI = process.env.MONGO_URI!;
 const PORT = process.env.PORT || 8000;
 
 app.use(cors());
+app.post('/api/webhook',express.raw({ type: "*/*" }),webhook);
 app.use(express.json());
 app.use(subdomainMiddleware);
 
