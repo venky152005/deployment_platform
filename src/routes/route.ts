@@ -12,7 +12,7 @@ router.get('/connect',AuthMiddleware,connect);
 router.get('/callback',callback);
 router.get('/repo/list',AuthMiddleware,repolist);
 router.post('/create/webhook',AuthMiddleware,create_webhook);
-router.get('/webhook',webhook);
+router.post('/webhook',webhook);
 router.post("/clone", cloneRepo);
 router.post("/env/:projectId", setEnvironmentVariables);
 router.post('/signup',Signup);

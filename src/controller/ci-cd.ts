@@ -115,7 +115,7 @@ export const create_webhook = async(req: AuthRequest, res: Response) => {
       active: true,
       events: ['push'],
       config:{
-        url: `${process.env.SERVER_URL}/webhook`,
+        url: `${process.env.SERVER_URL}/api/webhook`,
         content_type: 'json',
         secret: webhookSecret
       }
@@ -149,15 +149,20 @@ await Project.create({
 return res.status(200).json({message: "webhook connected"});
 }
 
-export const webhook = async(req: AuthRequest, res: Response) => {
+export const webhook = async(req: Request, res: Response) => {
+ try{
+    console.log("webhook triggered");
     const raw = req.body;
     const payload = JSON.parse(raw.toString());
-    const _id = req.user?.userid;
+
+    console.log(raw);
 
     const project = await Project.findOne({ repoFullName: payload.repository.full_name });
     if(!project ){
         return res.status(401).json({message:"Repo name is required"})
     }
+
+    console.log('first step completed');
 
     const signature = req.headers['x-hub-signature-sha256'] as String;
 
@@ -172,6 +177,8 @@ export const webhook = async(req: AuthRequest, res: Response) => {
     const repoURL = `https://github.com/${project.repoFullName}.git`;
     const projectName = project.repoFullName.split('/')[1];
 
+    console.log('second step completed');
+
     await cloneRepo({
         body:{
             repoUrl: repoURL,
@@ -180,4 +187,7 @@ export const webhook = async(req: AuthRequest, res: Response) => {
     } as Request,res);
 
     return res.status(200).json({message: 'Project deploy successfully'});
+}catch(err){
+  return res.status(500).json({message:"Internal error occured",err});    
+}
 }
