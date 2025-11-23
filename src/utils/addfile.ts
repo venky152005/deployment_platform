@@ -7,7 +7,8 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-COPY package*.json bun.lockb* . || true
+COPY package*.json ./
+COPY bun.lockb* ./ 
 
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
         bun install --frozen-lockfile ; \
@@ -29,7 +30,8 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-COPY package*.json bun.lockb* . || true
+COPY package*.json ./
+COPY bun.lockb* ./ 
 
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
         bun install --frozen-lockfile ; \
@@ -52,7 +54,8 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-COPY package*.json bun.lockb* ./
+COPY package*.json ./
+COPY bun.lockb* ./ 
 
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
         bun install --frozen-lockfile --no-progress --concurrent-jobs=2 ; \
@@ -95,7 +98,8 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-COPY package*.json bun.lockb* . || true
+COPY package*.json ./
+COPY bun.lockb* ./ 
 
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
         bun install --frozen-lockfile ; \

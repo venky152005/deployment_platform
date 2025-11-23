@@ -17,7 +17,7 @@ const MongoURI = process.env.MONGO_URI!;
 const PORT = process.env.PORT || 8000;
 
 app.use(cors());
-app.post('/api/webhook',express.raw({ type: "*/*" }),webhook);
+app.post('/api/webhook',express.raw({ type: ["application/json", "application/x-www-form-urlencoded"]  }),webhook);
 app.use(express.json());
 app.use(subdomainMiddleware);
 
