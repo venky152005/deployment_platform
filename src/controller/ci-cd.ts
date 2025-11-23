@@ -153,18 +153,24 @@ export const webhook = async(req: Request, res: Response) => {
     try{
     console.log("wehook triggered")
     const raw = req.body;
-    const payload = JSON.parse(raw.toString());
+    const payload = JSON.parse(raw.toString("utf8"));
 
     const project = await Project.findOne({ repoFullName: payload.repository.full_name });
     if(!project ){
         return res.status(401).json({message:"Repo name is required"})
     }
 
-    const signature = req.headers['x-hub-signature-256'] as String;
+    const signature = req.headers['x-hub-signature-256'];
 
-    const hmac = crypto.createHmac('sha256',project!.webhookSecret);
-    hmac.update(raw);
-    const expected = `sha256=${hmac.digest('hex')}`;
+    if (!signature || typeof signature !== "string") {
+     return res.status(400).json({ message: "Missing Signature" });
+    }
+
+    const expected = `sha256=`+ crypto.createHmac('sha256',project!.webhookSecret).update(raw).digest("hex");
+
+    if (signature.length !== expected.length) {
+      return res.status(401).json({ message: "Invalid Signature" });
+    }
 
     if(!crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected))){
        return res.status(401).json({message:'Invalid Signature'});

@@ -89,9 +89,8 @@ export const createContainer = async (req: AuthRequest, res: Response) => {
              "build", 
              ".cache",
              "coverage",
-             "*.log",
-             "*.tmp",
-             ".DS_Store"].includes(file)
+             "standalone",
+             ".DS_Store"].includes(file) && !file.endsWith(".log") && !file.endsWith(".tmp")
             )
         });
 
