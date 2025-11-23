@@ -154,6 +154,8 @@ export const webhook = async(req: Request, res: Response) => {
     console.log("wehook triggered")
     const raw = req.body;
     const payload = JSON.parse(raw.toString("utf8"));
+    console.log("raw:",raw);
+    console.log("payload:",payload);
 
     const project = await Project.findOne({ repoFullName: payload.repository.full_name });
     if(!project ){
@@ -163,21 +165,33 @@ export const webhook = async(req: Request, res: Response) => {
     const signature = req.headers['x-hub-signature-256'];
 
     if (!signature || typeof signature !== "string") {
-     return res.status(400).json({ message: "Missing Signature" });
-    }
+      return res.status(400).json({ message: "Missing Signature" });
+    }   
+
+    console.log("websecret:",project!.webhookSecret);
 
     const expected = `sha256=`+ crypto.createHmac('sha256',project!.webhookSecret).update(raw).digest("hex");
 
-    if (signature.length !== expected.length) {
-      return res.status(401).json({ message: "Invalid Signature" });
-    }
+    console.log("FROM GITHUB:", signature);
+    console.log("EXPECTED   :", expected);
 
-    if(!crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected))){
+    const receivedHex = signature.replace("sha256=", "");
+    const expectedHex = expected.replace("sha256=", "");
+
+    const receivedBuf = Buffer.from(receivedHex, "hex");
+    const expectedBuf = Buffer.from(expectedHex, "hex");
+
+    if (receivedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+       console.log("❌ Signature mismatch");
+       console.log("FROM GITHUB:", signature);
+       console.log("EXPECTED :", expected);
        return res.status(401).json({message:'Invalid Signature'});
     }
 
     const repoURL = `https://github.com/${project.repoFullName}.git`;
     const projectName = project.repoFullName.split('/')[1];
+
+    console.log('second step completed');
 
     await cloneRepo({
         body:{
@@ -191,3 +205,5 @@ export const webhook = async(req: Request, res: Response) => {
         return res.status(500).json({message:"Internal error occured",err});
     }
 }
+
+
