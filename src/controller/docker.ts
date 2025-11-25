@@ -50,6 +50,7 @@ function slugify(name: string){
 export const createContainer = async (req: AuthRequest, res: Response) => {
     const _id = req.user?.userid;
     const { projectPath, projectName } = req.body;
+    console.log("id:",_id);
 
     const startTime = new Date();
     console.log("Received request to create Docker container with data:", req.body);
