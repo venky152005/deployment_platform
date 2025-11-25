@@ -87,8 +87,8 @@ WORKDIR /app
 
 ARG USE_FROZEN=false
 
-# Copy dependency files (safe wildcard)
-COPY package*.json bun.lockb* ./
+COPY package*.json ./
+COPY bun.lockb* ./ 2>/dev/null || true
 
 # Install dependencies
 RUN if [ "$USE_FROZEN" = "true" ] ; then \
@@ -109,7 +109,6 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `;
-
 
 static laravelDockerfile = () => `
 FROM php:8.2-fpm

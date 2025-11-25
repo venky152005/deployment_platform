@@ -141,6 +141,7 @@ await Project.create({
 
  await cloneRepo({
         body:{
+            ownerId: _id,
             repoUrl: repoURL,
             projectName: projectName
         }
@@ -190,11 +191,14 @@ export const webhook = async(req: Request, res: Response) => {
 
     const repoURL = `https://github.com/${project.repoFullName}.git`;
     const projectName = project.repoFullName.split('/')[1];
+    const _id = project!.owner;
+    console.log('_id:',_id);
 
     console.log('second step completed');
 
     await cloneRepo({
         body:{
+            ownerId: _id,
             repoUrl: repoURL,
             projectName: projectName
         }

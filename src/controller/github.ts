@@ -20,8 +20,9 @@ const getNodeEntrypoint = (packageJson:any)=>{
 };
 
 export const cloneRepo = async (req: Request, res: Response) => {
-    const { repoUrl, projectName } = req.body;
+    const { ownerId, repoUrl, projectName } = req.body;
 
+    console.log('clone repo _id:',ownerId);
     if (!repoUrl || !projectName) {
         return res.status(400).json({ error: "Repository URL and Project Name are required" });
     }
@@ -84,6 +85,7 @@ export const cloneRepo = async (req: Request, res: Response) => {
 
         await createContainer({
             body: {
+                _id: ownerId,
                 projectPath: projectPath,
                 projectName: projectName
             }

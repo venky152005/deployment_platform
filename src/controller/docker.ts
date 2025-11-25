@@ -9,7 +9,6 @@ import path from "path";
 import { createNginxConfig, enableNginxConfig } from "../utils/nginx";
 import ContainerModel from "../model/container.model";
 import redis from "../utils/redis";
-import { AuthRequest } from "../middleware/authmiddleware";
 
 async function generateUniquePort() {
   let hostport;
@@ -47,11 +46,10 @@ function slugify(name: string){
     .slice(0, 40);
 } 
 
-export const createContainer = async (req: AuthRequest, res: Response) => {
-    const _id = req.user?.userid;
-    const { projectPath, projectName } = req.body;
-    console.log("id:",_id);
+export const createContainer = async (req: Request, res: Response) => {
+    const { _id, projectPath, projectName } = req.body;
 
+    console.log('create container _id:',_id);
     const startTime = new Date();
     console.log("Received request to create Docker container with data:", req.body);
     console.log("Time:", new Date().toLocaleString());
@@ -90,9 +88,8 @@ export const createContainer = async (req: AuthRequest, res: Response) => {
              "build", 
              ".cache",
              "coverage",
-             "*.log",
-             "*.tmp",
-             ".DS_Store"].includes(file)
+             "standalone",
+             ".DS_Store"].includes(file) && !file.endsWith(".log") && !file.endsWith(".tmp")
             )
         });
 
