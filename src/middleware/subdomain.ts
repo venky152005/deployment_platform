@@ -69,18 +69,6 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
        "EX", 7200);
     }
 
-
-    if (!container){
-        container = await ContainerModel.findOne({ subdomain });
-     if (!container) {
-        return res.status(404).send("Subdomain not found");
-      }
-       await redis.set(`subdomain:${subdomain}`,container.id, "EX", 7200);
-       await redis.set(`container:${container.id}`,JSON.stringify(container),
-       "EX", 7200);
-
-      }
-
    try{
 
     const dockerstatus = await docker.getContainer(container.containerId).inspect();
@@ -135,7 +123,7 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
 
     const exposedPorts = Object.keys(inspectData.NetworkSettings.Ports || {});
     console.log("exposed:",exposedPorts);
-    const port = container.containerport;
+    const port = container.port;
     console.log("port:",port) 
 
     const target = `http://${containerIP}:${port}`;
