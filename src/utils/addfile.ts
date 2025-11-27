@@ -85,25 +85,20 @@ static reactviteDockerfile = () => `
 FROM oven/bun:1 AS builder
 WORKDIR /app
 
-ARG USE_FROZEN=false
-
-COPY package*.json ./
-COPY bun.lockb* ./ 2>/dev/null || true
-
-# Install dependencies
-RUN if [ "$USE_FROZEN" = "true" ] ; then \
-        bun install --frozen-lockfile ; \
-    else \
-        bun install ; \
-    fi
-
-# Copy the rest of the project
+# Copy package + entire project first
 COPY . .
 
-# Build Vite app
+# Decide install method depending on lockfile existence
+RUN if [ -f bun.lockb ]; then \
+        echo "bun.lockb found → using frozen install"; \
+        bun install --frozen-lockfile; \
+    else \
+        echo "bun.lockb missing → normal install"; \
+        bun install; \
+    fi
+
 RUN bun run build
 
-# Final nginx server
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80

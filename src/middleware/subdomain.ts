@@ -54,7 +54,6 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
        const cachedcontainer = await redis.get(`container:${cachedid}`);
        if(cachedcontainer){
         console.log("Container data fetched from Redis cache");
-
          const parsed = JSON.parse(cachedcontainer);
          container = await ContainerModel.findById(parsed._id);
        }
@@ -68,18 +67,6 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
        await redis.set(`container:${container.id}`,JSON.stringify(container),
        "EX", 7200);
     }
-
-
-    if (!container){
-        container = await ContainerModel.findOne({ subdomain });
-     if (!container) {
-        return res.status(404).send("Subdomain not found");
-      }
-       await redis.set(`subdomain:${subdomain}`,container.id, "EX", 7200);
-       await redis.set(`container:${container.id}`,JSON.stringify(container),
-       "EX", 7200);
-
-      }
 
    try{
 
@@ -112,7 +99,7 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
      containerId: container.containerId,
      containername: container.containername,
      subdomain: container.subdomain,
-     port: container.port,
+     containerport: container.containerport,
      image: container.image,
      status: "running",
      containerport: container.containerport,
