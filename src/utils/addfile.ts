@@ -85,18 +85,17 @@ static reactviteDockerfile = () => `
 FROM oven/bun:1 AS builder
 WORKDIR /app
 
-ARG USE_FROZEN=false
-
-COPY package*.json ./
-COPY bun.lockb* ./ 2>/dev/null || true
-
-RUN if [ "$USE_FROZEN" = "true" ] ; then \
-        bun install --frozen-lockfile ; \
-    else \
-        bun install ; \
-    fi
-
+# Copy package + entire project first
 COPY . .
+
+# Decide install method depending on lockfile existence
+RUN if [ -f bun.lockb ]; then \
+        echo "bun.lockb found → using frozen install"; \
+        bun install --frozen-lockfile; \
+    else \
+        echo "bun.lockb missing → normal install"; \
+        bun install; \
+    fi
 
 RUN bun run build
 
@@ -122,3 +121,4 @@ CMD ["php-fpm", "-y", "/usr/local/etc/php-fpm.conf", "-O", "verbose"]
 }
 
 export default Dockerfile;
+

@@ -139,14 +139,6 @@ await Project.create({
     webhookSecret: webhookSecret
 });
 
- await cloneRepo({
-        body:{
-            ownerId: _id,
-            repoUrl: repoURL,
-            projectName: projectName
-        }
-    } as Request,res);
-
 return res.status(200).json({message: "webhook connected"});
 }
 

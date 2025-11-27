@@ -4,6 +4,7 @@ import User from "../../model/user.model";
 
 export const Signup = async(req:Request, res: Response)=>{
     const { firstName, lastName, email, password } = req.body;
+    console.log(firstName, lastName, email, password);
 
     if(!firstName){
         return res.status(401).json({message:'Firstname is required'});
@@ -23,7 +24,7 @@ export const Signup = async(req:Request, res: Response)=>{
 
     try {
         
-        const existingUser = await User.findOne({email: email});
+        const existingUser = await User.findOne({email:email});
 
         if(existingUser){
             return res.status(501).json({message: 'User already exist'});
