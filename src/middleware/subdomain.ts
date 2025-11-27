@@ -122,7 +122,7 @@ export const subdomainMiddleware = async (req: Request, res: Response, next: Nex
 
     const exposedPorts = Object.keys(inspectData.NetworkSettings.Ports || {});
     console.log("exposed:",exposedPorts);
-    const port = container.containerport;
+    const port = container.port;
     console.log("port:",port) 
 
     const target = `http://${containerIP}:${port}`;
