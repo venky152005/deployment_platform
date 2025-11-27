@@ -8,7 +8,7 @@ export const containerstats = async(req: AuthRequest, res: Response) => {
 
         if(!_id) return res.status(401).json({message: 'Id not found'});
 
-        const container = await ContainerModel.findOne({owner:_id});
+        const container = await ContainerModel.findOne({ownerId:_id});
 
         if(!container) return res.status(401).json({message: "Container not found"});
     } catch (error) {

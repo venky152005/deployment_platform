@@ -4,10 +4,12 @@ import { setEnvironmentVariables } from "../controller/environment_variables";
 import { Signup } from "../controller/auth/signup";
 import { Login } from "../controller/auth/login";
 import { AuthMiddleware } from "../middleware/authmiddleware";
-import { callback, connect, create_webhook, repolist, webhook } from "../controller/ci-cd";
+import { callback, connect, create_webhook, repolist } from "../controller/ci-cd";
+import { containerstats } from "../controller/container";
 
 const router = Router();
 
+router.get('/container/stats',AuthMiddleware,containerstats);
 router.get('/connect',AuthMiddleware,connect);
 router.get('/callback',callback);
 router.get('/repo/list',AuthMiddleware,repolist);
