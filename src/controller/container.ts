@@ -23,7 +23,7 @@ export const containerstats = async(req: AuthRequest, res: Response) => {
     } catch (error) {
         return res.status(500).json({message:"Internal error occured",error});
     }
-};
+}
 
 
 export const containerlogs = async(req: AuthRequest, res: Response) => {

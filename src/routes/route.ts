@@ -5,7 +5,7 @@ import { Signup } from "../controller/auth/signup";
 import { Login } from "../controller/auth/login";
 import { AuthMiddleware } from "../middleware/authmiddleware";
 import { callback, connect, create_webhook, repolist } from "../controller/ci-cd";
-import { containerlogs, containerstats } from "../controller/container";
+import { containerstats, containerlogs } from "../controller/container";
 
 const router = Router();
 
