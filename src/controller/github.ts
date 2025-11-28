@@ -20,7 +20,7 @@ const getNodeEntrypoint = (packageJson:any)=>{
 };
 
 export const cloneRepo = async (req: Request, res: Response) => {
-    const { ownerId, repoUrl, projectName } = req.body;
+    const { ownerId, repoUrl, projectName, variables } = req.body;
 
     console.log('clone repo _id:',ownerId);
     if (!repoUrl || !projectName) {
@@ -87,7 +87,8 @@ export const cloneRepo = async (req: Request, res: Response) => {
             body: {
                 _id: ownerId,
                 projectPath: projectPath,
-                projectName: projectName
+                projectName: projectName,
+                variables: variables
             }
         } as Request, res);
 

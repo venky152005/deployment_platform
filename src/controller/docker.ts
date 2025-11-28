@@ -47,7 +47,7 @@ function slugify(name: string){
 } 
 
 export const createContainer = async (req: Request, res: Response) => {
-    const { _id, projectPath, projectName } = req.body;
+    const { _id, projectPath, projectName, variables } = req.body;
 
     console.log('create container _id:',_id);
     const startTime = new Date();
@@ -72,6 +72,17 @@ export const createContainer = async (req: Request, res: Response) => {
         return res.status(400).json({ error: "Build the project before creating a Docker image" });
     }
 
+    if(variables){
+      const envFilePath = path.join(projectPath, '.env');
+
+      const envData = Object.entries(variables || {}).map(([key, value]) => `${key}=${value}`).join('\n');
+
+      fs.writeFileSync(envFilePath, envData);
+      console.log(`Environment variables written to ${envFilePath} containing ${envData}`);
+    }else{
+      console.log("No environment variables provided");
+    }
+
     const dockerPath = projectPath.replace(/\\/g, '/'); 
     console.log("Using Docker path:", dockerPath);
 
@@ -81,7 +92,7 @@ export const createContainer = async (req: Request, res: Response) => {
 
         const tarstream = tar.pack(dockerPath, {
             entries: fs.readdirSync(dockerPath).filter(file => ![
-                "node_modules",
+             "node_modules",
              ".next",
              ".git",
              "dist",
